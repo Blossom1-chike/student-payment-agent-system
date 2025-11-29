@@ -1,86 +1,71 @@
-# main.py
-
+from fastapi import FastAPI, Form, File, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
-from langchain_core.messages import HumanMessage
-from graph import UniversityState, build_graph
-from dotenv import load_dotenv
+import json
+from langchain_core.messages import HumanMessage, AIMessage
+from chat import chat 
+app = FastAPI()
 
-# Load environment variables
-load_dotenv()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Build the workflow graph
-app = build_graph()
+# Helper to convert messages to JSON-serializable dicts
+def serialize_message(msg):
+    return {
+        "type": type(msg).__name__,
+        "content": getattr(msg, "content", None)
+    }
 
-def chat(user_input: str, state: Optional[UniversityState] = None):
-    """Chat with the multi-agent system"""
-    
-    human_message = HumanMessage(content=user_input)
-    
-    if state is None:
-        # Initialize new conversation
-        current_state = {
-            "messages": [human_message],
-            "student_id": None,
-            "student_name": None,
-            "amount": None,
-            "payment_link": None,
-            "unmatched_payments": None,
-            "payment_matched": None,
-            "support_ticket_id": None,
-            "issue_resolved": None,
-            "appointment_time": None,
-            "appointment_confirmed": None,
-            "agent_route": None
-        }
+@app.post("/chat")
+async def chat_endpoint(
+    user_input: str = Form(...),
+    state: str = Form('{}'),               # state from client as JSON string
+    file: Optional[UploadFile] = File(None)
+):
+    """
+    Handles student general and payment queries with optional uploaded ID file.
+    Persists conversation state between requests.
+    """
+
+    # --- Parse state ---
+    try:
+        state_dict = json.loads(state)
+    except json.JSONDecodeError:
+        state_dict = {}
+
+    # Ensure messages list exists in state
+    human_msg = HumanMessage(content=user_input)
+    if "messages" not in state_dict:
+        state_dict["messages"] = [human_msg]
     else:
-        # Continue existing conversation
-        current_state = state.copy()
-        current_state["messages"] = state["messages"] + [human_message]
-    
-    # Run the graph
-    result = app.invoke(current_state)
-    
-    # Extract last response
-    last_message = result["messages"][-1]
-    response_text = last_message.content if hasattr(last_message, 'content') else str(last_message)
-    
-    return response_text, result
+        state_dict["messages"].append(human_msg)
 
-def main():
-    """Run interactive chat session"""
-    
-    print("🎓 Northumbria University Payment System")
-    print("=" * 60)
-    print("Multi-Agent System with:")
-    print("  💳 Payment Agent")
-    print("  🔄 Reconciliation Agent")
-    print("  🆘 Support Agent")
-    print("  📅 Appointment Agent")
-    print("=" * 60)
-    print("Type 'quit' to exit\n")
-    
-    state = None
-    
-    while True:
-        user_input = input("You: ").strip()
-        
-        if user_input.lower() in ['quit', 'exit', 'q']:
-            print("\n👋 Goodbye!")
-            break
-        
-        if not user_input:
-            continue
-        
-        try:
-            print()  # Blank line for readability
-            response, state = chat(user_input, state)
-            print(f"\n🤖 Agent: {response}\n")
-            print("-" * 60)
-            
-        except Exception as e:
-            print(f"\n❌ Error: {e}\n")
-            import traceback
-            traceback.print_exc()
+    # --- Convert uploaded file to bytes if provided ---
+    image_bytes = await file.read() if file else None
 
-if __name__ == "__main__":
-    main()
+    # --- Call your agent/graph ---
+    response_text, updated_state = chat(
+        user_input=user_input,
+        state=state_dict,
+        image_bytes=image_bytes
+    )
+
+    # Append AI message returned by the agent
+    # if "messages" in result and result["messages"]:
+    #     state_dict["messages"].append(result["messages"][-1])
+    #     response_text = getattr(result["messages"][-1], "content", str(result["messages"][-1]))
+    # else:
+    #     response_text = ""
+
+    # --- Serialize messages for client ---
+    serialized_state = [serialize_message(m) for m in updated_state["messages"]]
+
+    return {
+        "response": response_text,
+        "state": serialized_state
+    }

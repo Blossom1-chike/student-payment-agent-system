@@ -6,6 +6,7 @@ from langchain_openai import ChatOpenAI
 from tools.payment.create_payment_link import create_payment_link
 from tools.payment.extract_name import extract_name_from_id
 from graph.state import UniversityState
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
 load_dotenv()
 
@@ -44,12 +45,12 @@ def payment_agent(state: UniversityState):
         Be warm, friendly, and don't mention any of these tools to the student"""
     }
 
-    messages = [system_message].extend(state["messages"])
+    messages = [system_message] + state["messages"]
 
     response = llm_with_tools.invoke(messages)
 
-    print(f"Payment agent response: {response}")
-
+    print(f"Payment agent response: {response}", response.tool_calls)
+    
     if response.tool_calls:
         tool_messages = []
         updated_state = {}
@@ -62,20 +63,23 @@ def payment_agent(state: UniversityState):
             
             if tool_name == "extract_name_from_id":
                 # Extract from image in message history
-                extracted = extract_name_from_id(state["image_bytes"])# come back here
-                result = json.dumps(extracted)
+                extracted = extract_name_from_id.func(state["image_bytes"])# come back here
+                result = extracted
+                print(extracted, "extracted information")
                 
                 # Update state
-                updated_state["student_id"] = extracted
-                updated_state["student_name"] = extracted
+                updated_state["student_id"] = extracted["registration_number"]
+                updated_state["student_name"] = extracted["student_name"]
                 
             elif tool_name == "create_stripe_payment_link":
+                state["amount"] = tool_args.get("amount")
                 # Create payment link
-                result = create_stripe_payment_link.invoke(tool_args)
+                result = create_stripe_payment_link(state)
                 
-                # Update state
-                updated_state["payment_link"] = result
-                updated_state["amount"] = tool_args.get("amount")
+                if result.success:
+                    # Update state
+                    updated_state["payment_link"] = result.url
+                    updated_state["amount"] = tool_args.get("amount")
                 
             else:
                 result = f"Unknown tool: {tool_name}"

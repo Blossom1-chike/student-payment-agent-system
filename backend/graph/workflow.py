@@ -2,8 +2,9 @@
 
 from langgraph.graph import StateGraph, END
 from graph.state import UniversityState
-from agents import payment_agent, reconciliation_agent
-from orchestrator import orchestrator, router
+from agents.payment_agent import payment_agent
+from agents.reconciliation_agent import reconciliation_agent
+from agents.orchestrator import orchestrator, router
 
 def build_graph():
     """Build and compile the workflow graph"""
@@ -27,8 +28,8 @@ def build_graph():
         {
             "payment_agent": "payment_agent",
             "reconciliation_agent": "reconciliation_agent",
-            "support_agent": "support_agent",
-            "appointment_agent": "appointment_agent",
+            # "support_agent": "support_agent",
+            # "appointment_agent": "appointment_agent",
             "__end__": END
         }
     )
@@ -36,8 +37,8 @@ def build_graph():
     # After agents, go back to orchestrator
     workflow.add_edge("payment_agent", "orchestrator")
     workflow.add_edge("reconciliation_agent", "orchestrator")
-    workflow.add_edge("support_agent", "orchestrator")
-    workflow.add_edge("appointment_agent", "orchestrator")
+    # workflow.add_edge("support_agent", "orchestrator")
+    # workflow.add_edge("appointment_agent", "orchestrator")
     
     # Compile and return
     return workflow.compile()

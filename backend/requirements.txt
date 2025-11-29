@@ -9,3 +9,4 @@ langchain_community
 langchain_openai 
 easyocr
 numpy
+pillow

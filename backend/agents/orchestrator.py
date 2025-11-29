@@ -1,7 +1,9 @@
+import os
 from pydantic import BaseModel
 from typing import Literal
 from dotenv import load_dotenv
 from graph.state import UniversityState
+from langchain_openai import ChatOpenAI
 
 # ============================================================================
 # STATE DEFINITION
@@ -9,6 +11,7 @@ from graph.state import UniversityState
 
 load_dotenv()
 
+api_key = os.getenv("OPENAI_API_KEY")
 llm = ChatOpenAI(model="gpt-4o-mini", openai_api_key=api_key, temperature=0)
 
 # Define the classification schema
@@ -29,7 +32,7 @@ def orchestrator(state: UniversityState):
             "role": "system",
             "content": """Classify the student message to route to the correct agent:
 
-            - 'payment': If the student wants to make a NEW payment, needs payment link, asking about fees/costs, uploading student ID
+            - 'payment': If the student wants to make a NEW payment, needs payment link, asking about fees/costs, uploading student ID to validate identity before payment
             - 'reconciliation': If the student ALREADY paid but has access issues, missing payment reference, portal blocked despite payment
             - 'support': If the student has a problem, complaint, error, needs general help, frustrated
             - 'appointment': If the student wants to schedule a meeting, book appointment, talk to someone in person
@@ -57,8 +60,8 @@ def router(state: UniversityState):
     agent_map = {
         "payment": "payment_agent",
         "reconciliation": "reconciliation_agent",
-        "support": "support_agent",
-        "appointment": "appointment_agent"
+        # "support": "support_agent",
+        # "appointment": "appointment_agent"
     }
     
     # Check if we're done

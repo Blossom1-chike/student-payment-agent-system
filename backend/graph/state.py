@@ -4,6 +4,9 @@ import operator
 class UniversityState(TypedDict):
     """Shared state across all agents"""
     messages: Annotated[list, operator.add]
+
+    #uploaded image
+    image_bytes: Optional[bytes]
     
     # Payment info
     student_id: Optional[str]
@@ -24,4 +27,4 @@ class UniversityState(TypedDict):
     appointment_confirmed: Optional[bool]
     
     # Routing
-    next_agent: Optional[str]
+    agent: Optional[str]

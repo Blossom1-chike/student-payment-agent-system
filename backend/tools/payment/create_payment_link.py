@@ -2,6 +2,7 @@ import stripe
 import os
 from typing_extensions import TypedDict
 from langchain.tools import tool
+from graph.state import UniversityState
 
 """ 
 The payment process involves:
@@ -26,23 +27,22 @@ class PaymentDTO(TypedDict):
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")  # set your secret key
 
 @tool("create_payment_link", return_direct=False, description="Generates a stripe payment link for student to make payment with")
-def create_payment_link(payment: PaymentDTO):
+def create_payment_link(state: UniversityState):
     try:
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
             line_items=[
                 {
                     "price_data": {
-                        "currency": currency | "gbp",
-                        "product_data": {"name": "Course Fee"},
-                        "unit_amount": amount,
+                        "currency": "gbp",
+                        "product_data": {"name": f"Course Fee for student {state["student_id"]}"},
+                        "unit_amount": state["amount"],
                     },
                     "quantity": 1,
                 }
             ],
             mode="payment",
             customer_email=email or None,
-            metadata={"student_name": student_name},
             success_url="https://yourdomain.com/success?session_id={CHECKOUT_SESSION_ID}",
             cancel_url="https://yourdomain.com/cancel",
         )
