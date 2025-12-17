@@ -5,11 +5,13 @@ export async function sendChat(
   state: any,
   threadId: string,
   file?: File | null,
+  type?: "live_image" | "id_card" | null,
 ) {
   const formData = new FormData();
   formData.append("user_input", userInput);
   formData.append("state", JSON.stringify(state || {}));
   formData.append("thread_id", threadId);
+  formData.append("type", type || "");
   if (file) formData.append("file", file);
 
   // CRITICAL: Send the ID back if we have one

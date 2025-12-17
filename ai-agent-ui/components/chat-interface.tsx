@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Paperclip, Send, X } from "lucide-react"
-import { NorthumbriaLogo } from "@/components/northumbria-logo"
+import { Paperclip, Send, X, Camera } from "lucide-react"
 import { WelcomeScreen } from "@/components/welcome-screen"
 import { ChatMessage } from "@/components/chat-message"
 import { sendChat } from "@/hooks/send-chat"
 import Image from 'next/image'
+import { PrivacyPolicyModal } from "./privacy-policy"
+import { IdCameraCapture } from "./id-camera-capture"
 
 type MessageType = "AIMessage" | "HumanMessage";
 
@@ -28,9 +29,21 @@ export function ChatInterface() {
   const [inputValue, setInputValue] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [uploading, setUploading] = useState(false);
+  const [fileType, setFileType] = useState<"live_image" | "id_card" | null>(null)
   const [threadId, setThreadId] = useState(""); // Store ID here
   const [state, setState] = useState<any>({});
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false)
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
+  const [showIdCamera, setShowIdCamera] = useState(false)
+
+  useEffect(() => {
+    const hasAccepted = localStorage.getItem("northumbria-privacy-accepted")
+    if (hasAccepted === "true") {
+      setPrivacyAccepted(true)
+    } else {
+      setShowPrivacyPolicy(true)
+    }
+  }, [])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -42,6 +55,7 @@ export function ChatInterface() {
     const file = e.target.files?.[0]
     if (file) {
       setAttachedFile(file)
+      setFileType("id_card")
     }
   }
 
@@ -50,6 +64,18 @@ export function ChatInterface() {
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
+  }
+
+  const handleAcceptPrivacy = () => {
+    localStorage.setItem("northumbria-privacy-accepted", "true")
+    setPrivacyAccepted(true)
+    setShowPrivacyPolicy(false)
+  }
+
+  const handleRejectPrivacy = () => {
+    setShowPrivacyPolicy(true)
+    // You can redirect to another page or show a message
+    alert("You must accept the privacy policy to use AskNorthumbria")
   }
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -66,12 +92,10 @@ export function ChatInterface() {
     setIsLoading(true)
     setInputValue("");
 
-    if (attachedFile) setUploading(true); //if there's a file, set uploading to true
-
     try {
       const textToSend = attachedFile ? (inputValue || "Uploaded ID image.") : inputValue; //if there's a file, send the input as caption or default text
 
-      const data = await sendChat(textToSend, state, threadId, attachedFile); //send the chat to the API
+      const data = await sendChat(textToSend, state, threadId, attachedFile, fileType); //send the chat to the API
 
       if (data.thread_id) setThreadId(data.thread_id); //store the thread ID if we get one back
 
@@ -85,7 +109,6 @@ export function ChatInterface() {
       }
       setMessages((prev) => [...prev, errorMessage])
     } finally {
-      setUploading(false);
       setIsLoading(false)
       setAttachedFile(null)
       if (fileInputRef.current) {
@@ -94,15 +117,67 @@ export function ChatInterface() {
     }
   }
 
+  const handleIdCapture = async (imageBlob: Blob) => {
+    const file = new File([imageBlob], "id-verification.jpg", { type: "image/jpeg" })
+    setAttachedFile(file)
+    setFileType("live_image")
+    // // Optionally send immediately to backend
+    // const userMessage: Message = {
+    //   id: Date.now().toString(),
+    //   role: "user",
+    //   content: "ID verification photo submitted",
+    // }
+
+    // setMessages((prev) => [...prev, userMessage])
+    // setIsLoading(true)
+
+    // try {
+    //   const formData = new FormData()
+    //   formData.append("message", "ID verification")
+    //   formData.append("file", file)
+    //   formData.append("type", "id-verification")
+
+    //   // Replace with your actual backend endpoint
+    //   const response = await fetch("/api/your-backend-endpoint", {
+    //     method: "POST",
+    //     body: formData,
+    //   })
+
+    //   const data = await response.json()
+
+    //   const assistantMessage: Message = {
+    //     id: (Date.now() + 1).toString(),
+    //     role: "assistant",
+    //     content: data.response || data.message || "ID verification received. Thank you!",
+    //   }
+
+    //   setMessages((prev) => [...prev, assistantMessage])
+    // } catch (error) {
+    //   console.error("Error sending ID:", error)
+    //   const errorMessage: Message = {
+    //     id: (Date.now() + 1).toString(),
+    //     role: "assistant",
+    //     content: "Sorry, there was an error with ID verification. Please try again.",
+    //   }
+    //   setMessages((prev) => [...prev, errorMessage])
+    // } finally {
+    //   setIsLoading(false)
+    //   setAttachedFile(null)
+    // }
+  }
+
   const showWelcome = messages.length === 0 // Show welcome screen if no messages yet
 
   return (
     <div className="flex flex-col h-screen">
+      {showPrivacyPolicy && <PrivacyPolicyModal onAccept={handleAcceptPrivacy} onReject={handleRejectPrivacy} />}
+      {showIdCamera && <IdCameraCapture onCapture={handleIdCapture} onClose={() => setShowIdCamera(false)} />}
+
       {/* Header */}
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Image src={`/logo.svg`} alt={"Northumbria Logo"} width="40" height="40" />
+            <Image src={`/logo.svg`} alt={"Northumbria Logo"} width="30" height="30" />
             <div>
               <h1 className="text-lg font-semibold text-foreground">AskNorthumbria</h1>
               <p className="text-sm text-muted-foreground">Your 24/7 Student Assistant</p>
@@ -174,16 +249,29 @@ export function ChatInterface() {
                   className="hidden"
                   accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg"
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 text-muted-foreground hover:text-foreground"
-                  disabled={isLoading}
-                >
-                  <Paperclip className="h-4 w-4" />
-                </Button>
+                <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowIdCamera(true)}
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    disabled={isLoading}
+                    title="Verify ID with Camera"
+                  >
+                    <Camera className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    disabled={isLoading}
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               <Button
                 type="submit"
