@@ -9,9 +9,9 @@ def verify_student_identity(extracted_id: str):
     # Query Supabase
     response = supabase.table("students").select("*").eq("student_id", extracted_id).execute()
     print("response", response)
-    if not response.data:
-        return "Identity Mismatch: Student ID not found in database."
-    
-    # Optional: Fuzzy match the name
-    db_name = response.data[0]['name']
-    return f"Identity Verified: Matches {db_name}."
+
+    if response.data and len(response.data) > 0:
+        student = response.data[0]
+        return f"Identity Verified: Name: {student['name']}, Course: {student['course']}, Year Admitted: {student['year_admitted']}"
+    else:
+        return "NOT_FOUND"

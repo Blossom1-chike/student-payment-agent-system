@@ -1875,16 +1875,6 @@
     background-color: var(--background);
   }
 
-  .bg-background\/0 {
-    background-color: var(--background);
-  }
-
-  @supports (color: color-mix(in lab, red, red)) {
-    .bg-background\/0 {
-      background-color: color-mix(in oklab, var(--background) 0%, transparent);
-    }
-  }
-
   .bg-background\/10 {
     background-color: var(--background);
   }
@@ -1893,30 +1883,6 @@
     .bg-background\/10 {
       background-color: color-mix(in oklab, var(--background) 10%, transparent);
     }
-  }
-
-  .bg-background\/20 {
-    background-color: var(--background);
-  }
-
-  @supports (color: color-mix(in lab, red, red)) {
-    .bg-background\/20 {
-      background-color: color-mix(in oklab, var(--background) 20%, transparent);
-    }
-  }
-
-  .bg-background\/80 {
-    background-color: var(--background);
-  }
-
-  @supports (color: color-mix(in lab, red, red)) {
-    .bg-background\/80 {
-      background-color: color-mix(in oklab, var(--background) 80%, transparent);
-    }
-  }
-
-  .bg-background\/100 {
-    background-color: var(--background);
   }
 
   .bg-black {

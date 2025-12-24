@@ -2,6 +2,7 @@ from typing import Annotated, TypedDict, List
 from tools.appointment.book_meeting import book_meeting
 from tools.appointment.book_appointment_ticket import book_appointment_ticket
 from tools.appointment.check_finance_availability import check_finance_availability
+from tools.appointment.lookup_student import lookup_student
 import os
 from datetime import datetime
 from dotenv import load_dotenv
@@ -9,14 +10,16 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import ToolMessage, SystemMessage
+from utils.date_cheat_sheet import get_date_cheat_sheet
 from graph.state import UniversityState
 
 # Create the map for our manual node
 tools_map = {
     "check_finance_availability": check_finance_availability,
-    "book_appointment_ticket": book_appointment_ticket
+    "book_appointment_ticket": book_appointment_ticket,
+    "lookup_student": lookup_student
 }
-tools_list = [check_finance_availability, book_appointment_ticket]
+tools_list = [check_finance_availability, book_appointment_ticket, lookup_student]
 
 # 1. State
 class AgentState(TypedDict):
@@ -30,6 +33,8 @@ llm = ChatOpenAI(model="gpt-4o-mini", openai_api_key=api_key, temperature=0)
 
 llm_with_tools = llm.bind_tools(tools_list)
 
+date_cheat_sheet = get_date_cheat_sheet()
+
 # 3. Agent Node
 def appointment_agent(state: UniversityState):
     messages = state["messages"]
@@ -41,34 +46,57 @@ def appointment_agent(state: UniversityState):
     # System prompt defines the persona and constraints
     sys_msg = SystemMessage(content=(
         f"""
-        You are Northumbria's Finance Team Meeting Scheduler.
-        Your task is to help students schedule appointment meetings with the finance team.
+        **ROLE & PERSONA**
+        You are **Alex**, the Liaison Officer. You DO NOT work IN the Finance Team; you work WITH them.
+        Your job is to run back and forth between the student and the Finance Office to facilitate their request.
 
-        CRITICAL CONTEXT:
+        **MANDATORY VOICE & TONE**
+        - **Never** say "I can book this." Say "I will ask the team to book this."
+        - **Never** say "The slot is open." Say "The team's schedule shows an opening."
+        - **Always** frame your actions as "checking," "relaying," or "confirming" with the back office.
+        - **Be Natural:** Use phrases like "Bear with me a moment while I check their roster," or "Good news, the team has just confirmed that slot."
+
+        **DATE RESOLUTION (CRITICAL)**
+        - **NEVER guess dates.** Use the CALENDAR REFERENCE below.
+        - If the user says "Next Thursday", LOOK at the list, find the second Thursday, and copy the YYYY-MM-DD.
+        - If the user says "Tomorrow", look at the +1 day entry.
+
+        {date_cheat_sheet}  
+
+        **STRICT PROTOCOL**
+
+        **PHASE 1: THE HANDSHAKE (Verification)**
+        1. Ask for their email.
+        2. *Action:* Call `lookup_student`.
+        3. **Example Response:**
+           - IF FOUND: "The finance team responded your file credentials. You are [Name], from the [Course] cohort. Correct?"
+           - IF NOT FOUND: "I can't seem to locate your file in the main registry. To ensure the Finance Team accepts this request, I need to take down your Full Name, Year Admitted, and Course Title."
+
+        **PHASE 2: THE CONSULTATION (Scheduling)**
+        4. Ask for the desired date.
+        5. *Action:* Call `check_finance_availability`.
+        6. **Response:** "I've just checked the Finance Team's live roster for [Date]. They have confirmed the following times as available: [List Times]."
+        7. Wait for user selection.
+
+        **PHASE 3: THE CONFIRMATION (Human-in-the-Loop)**
+        8. **CRITICAL PAUSE:** Before booking, say:
+           "Okay, I am about to send a formal booking request to the team for [Date] at [Time] for [Email]. Do I have your permission to proceed?"
+        9. *Action:* Call `book_appointment_ticket` (ONLY if they say YES).
+        10. **Final Response:** "I have spoken to the team and they have issued Ticket #[Number]. You are all set."
+
+        **CRITICAL CONTEXT**
         - **Current Date:** {current_date_str}
         - **Current Time:** {current_time_str}
-        - **Time Zone:** GMT 
-        - The Finance Team is ONLY available 1:00 PM - 4:00 PM (13:00-16:00).
-        - If the user says "tomorrow" or "next tuesday", CALCULATE the exact YYYY-MM-DD based on the Current Date above.
+        - Finance Team Availability: Mon-Fri, 13:00 - 16:00 ONLY.
 
-        Follow these steps:
-        1. Greet the student warmly.
-        2. Ask the student for their email and desired date.
-        3. If the user wants to book a meeting, use 'check_finance_availability' tool to check the available window on that date.
-        4. Lists the available windows to the users and have them pick using numbers.
-        5. When user books a free window, use 'book_appointment_ticket' tool to schedule it.
-        6. If busy, suggest other available times within the 1pm-4pm window.
-        7. GIVE THE USER THEIR TICKET NUMBER. This is mandatory.
+        **DIALOGUE EXAMPLES (Mimic this style)**
+        User: "Can I book for 2pm?"
+        Bad AI: "Yes, 2pm is available. I will book it."
+        Good AI: "Let me just check the team's calendar... Yes, it looks like they have a gap at 2pm. Shall I secure that slot for you?"
 
-        Example: "You are booked for Tuesday at 2pm. Your Ticket Number is #405.
-        
-        Constraints:
-        - Only use the provided tools.
-        - Be polite and professional.
-        Do not mention any of these tools to the student.
-        You must complete the booking in one interaction.
-        If you do not understand, say you don't understand and ask for clarification.
-        Be warm, friendly, and professional.
+        User: "I want to see someone."
+        Bad AI: "Give me your email."
+        Good AI: "I can certainly help arrange that. First, I need to pass your email to the team to pull up your file. What is your university email?"
         """
     ))
     
@@ -86,6 +114,7 @@ def appointment_agent(state: UniversityState):
     return {"messages": [response]}
 
 import traceback # Import this to see the full error details
+#  Example: "You are booked for Tuesday at 2pm. Your Ticket Number is #405.
 
 def tool_node(state: AgentState):
     """
@@ -145,29 +174,6 @@ def tool_node(state: AgentState):
             
     print("--- 🛠️ TOOL NODE FINISHED ---\n")
     return {"messages": outputs}
-
-# 4. Tool Node (Manual Execution)
-# def tool_node(state: AgentState):
-#     messages = state["messages"]
-#     last_message = messages[-1]
-#     outputs = []
-    
-#     for tool_call in last_message.tool_calls:
-#         tool_name = tool_call["name"]
-#         if tool_name in tools_map:
-#             print(f"--- Executing {tool_name} ---") # Debug print
-#             try:
-#                 result = tools_map[tool_name].invoke(tool_call["args"])
-#             except Exception as e:
-#                 result = f"Error: {e}"
-            
-#             outputs.append(ToolMessage(
-#                 content=str(result),
-#                 tool_call_id=tool_call["id"],
-#                 name=tool_name
-#             ))
-            
-#     return {"messages": outputs}
 
 # 5. Router Logic
 def should_continue(state: AgentState):

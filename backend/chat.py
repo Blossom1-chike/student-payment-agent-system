@@ -11,7 +11,20 @@ load_dotenv()
 # Build the workflow graph once
 app = build_graph()
 
-async def chat(user_input: str, thread_id: str = "chat_user_2", file_url: str=""):
+# 2. Save the image to your folder
+try:
+    png_data = app.get_graph().draw_mermaid_png()
+    
+    # Save as a generic PNG file
+    with open("agent_visual_diagram.png", "wb") as f:
+        f.write(png_data)
+
+    print("SUCCESS: Diagram saved as 'agent_visual_diagram.png'")
+
+except Exception as e:
+    print(f"Error generating diagram: {e}")
+
+async def chat(user_input: str, thread_id: str = "chat_user_2", file_url: str="", type: Optional[str]=None):
     """
     Chat with the multi-agent system.
     We let the Graph handle all orchestration and routing internally.
@@ -27,8 +40,12 @@ async def chat(user_input: str, thread_id: str = "chat_user_2", file_url: str=""
     
     # 2. Inject File URL if it exists
     # LangGraph will automatically merge this into the 'UniversityState'
-    if file_url:
+    if file_url and type == "id_card":
         input_payload["file_url"] = file_url
+    elif file_url and type == "live_image":
+        input_payload["live_image_url"] = file_url
+        
+    input_payload["type"] = type
 
     try:
         # 3. Run the Graph

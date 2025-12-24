@@ -35,6 +35,7 @@ class UniversityState(TypedDict, total=False):
     current_step: Optional[str]
 
     file_url: Optional[str]
+    live_image_url: Optional[str]
     
     # Routing
     agent: Optional[str]

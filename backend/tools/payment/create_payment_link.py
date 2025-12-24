@@ -48,7 +48,7 @@ def create_payment_link(amount: float, student_id: str):
         
         # 3. Log 'Pending' Record in Supabase
         supabase.table("payments").insert({
-            "student_number": student_id,
+            "student_id": student_id,
             "amount": amount,
             "stripe_session_id": session.id,
             "status": "pending"
@@ -59,49 +59,51 @@ def create_payment_link(amount: float, student_id: str):
     except Exception as e:
         return f"Stripe Error: {str(e)}"
 
-# @tool("create_payment_link", return_direct=False, description="Generates a stripe payment link for student to make payment with")
-# def create_payment_link(state: UniversityState):
-#     try:
-#         session = stripe.checkout.Session.create(
-#             payment_method_types=["card"],
-#             line_items=[
-#                 {
-#                     "price_data": {
-#                         "currency": "gbp",
-#                         "product_data": {"name": f"Course Fee for student {state["student_id"]}"},
-#                         "unit_amount": state["amount"],
-#                     },
-#                     "quantity": 1,
-#                 }
-#             ],
-#             mode="payment",
-#             customer_email=email or None,
-#             success_url="https://yourdomain.com/success?session_id={CHECKOUT_SESSION_ID}",
-#             cancel_url="https://yourdomain.com/cancel",
-#         )
-#         return {"success": True, "url": session.url, "session_id": session.id}
-#     except Exception as e:
-#         print("Error generating payment link:", e)
-#         return {"success": False, "error": str(e)}
-
-def verify_payment(session_id):
+@tool
+def verify_payment_status(student_id: str):
     """
-    Verify payment from a Stripe Checkout session ID.
+    Checks if the recent payment was successful and retrieves the remaining balance and due date.
+    Use this when the user says "I have paid".
     """
+    print(f"🔎 Verifying payment for {student_id}...")
+    
     try:
-        session = stripe.checkout.Session.retrieve(session_id)
-        payment_status = session.payment_status
-        metadata = session.metadata
-        amount = session.amount_total
-        currency = session.currency
+        # 1. Look for the most recent SUCCESSFUL payment
+        payment_res = supabase.table("payments") \
+            .select("*") \
+            .eq("student_number", student_id) \
+            .eq("status", "paid") \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
 
-        return {
-            "success": payment_status == "paid",
-            "student_name": metadata.get("student_name"),
-            "amount": amount,
-            "currency": currency,
-        }
+        if not payment_res.data:
+             return "❌ I cannot see the payment yet. Please wait a moment and try again."
+
+        payment = payment_res.data[0]
+        amount_paid = payment['amount']
+        current_balance = payment['balance_after'] # The webhook calculated this!
+        
+        # 2. Get the Due Date from Students Table
+        student_res = supabase.table("students") \
+            .select("next_payment_due") \
+            .eq("student_id", student_id) \
+            .execute()
+            
+        due_date = "2025-09-01" # Default fallback
+        if student_res.data and student_res.data[0]['next_payment_due']:
+            due_date = student_res.data[0]['next_payment_due']
+
+        # 3. Construct the Notification Message
+        return (
+            f"✅ **Payment Successful!**\n\n"
+            f"We have received your payment of **£{amount_paid:,.2f}**.\n"
+            f"-----------------------------------\n"
+            f"💰 **New Balance:** £{current_balance:,.2f}\n"
+            f"📅 **Next Payment Due:** {due_date}\n"
+            f"-----------------------------------\n"
+            f"A receipt has been emailed to you."
+        )
 
     except Exception as e:
-        print("Error verifying payment:", e)
-        return {"success": False, "error": str(e)}
+        return f"System Error: {str(e)}"
